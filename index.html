@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jedi Force Controller</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="game-area" aria-label="Jedi Force Controller game">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Force Gesture Game</p>
+            <h1>Jedi Force Controller</h1>
+          </div>
+          <div class="stats">
+            <span>Score <strong id="score">0</strong></span>
+            <span>Level <strong id="level">1</strong></span>
+          </div>
+        </header>
+
+        <div class="mission-bar">
+          <div>
+            <strong id="missionTitle">Missie 1</strong>
+            <span id="missionText">Raak de kyber crystal met de Force orb.</span>
+          </div>
+          <div class="timer" id="timer">60s</div>
+        </div>
+
+        <div class="canvas-wrap">
+          <canvas id="gameCanvas" width="1100" height="620"></canvas>
+          <div class="game-hud">
+            <span id="statusText">Test met pijltjestoetsen en spatie.</span>
+            <span id="gestureText">Actie: geen</span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="side-panel" aria-label="Game controls">
+        <section class="panel-section">
+          <div class="section-title">
+            <h2>Force Controls</h2>
+            <span id="controlMode">Keyboard</span>
+          </div>
+          <div class="button-grid">
+            <button class="force-btn" id="leftBtn" type="button">Hand links</button>
+            <button class="force-btn" id="upBtn" type="button">Hand omhoog</button>
+            <button class="force-btn" id="rightBtn" type="button">Hand rechts</button>
+            <button class="force-btn danger" id="fistBtn" type="button">Vuist</button>
+          </div>
+          <p class="hint">Keyboard: pijltjes links/rechts/omhoog en spatie voor vuist.</p>
+        </section>
+
+        <section class="panel-section">
+          <h2>Instellingen</h2>
+          <label for="speedRange">Force snelheid <strong id="speedValue">7</strong></label>
+          <input id="speedRange" type="range" min="3" max="12" value="7" />
+          <div class="row">
+            <button id="newMissionBtn" type="button">Nieuwe crystal</button>
+            <button id="resetBtn" type="button">Reset game</button>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <div class="section-title">
+            <h2>Teachable Machine</h2>
+            <span id="modelState">Niet gestart</span>
+          </div>
+          <button id="startModelBtn" type="button">Start pose model</button>
+          <canvas id="poseCanvas" width="120" height="90"></canvas>
+          <div class="prediction-list" id="predictionList">
+            <p class="empty">Nog geen voorspellingen.</p>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>
