@@ -1,18 +1,26 @@
-# Jedi Force Controller
+# Mistfall Gate
 
-Een schone gameversie zonder Teachable Machine-koppeling en zonder storage.
+Een p5play platformer met pixel-art assets uit de Legacy Collection asset pack.
 
 ## Besturing
 
-- `hand links` / pijltje links: duwt de orb naar links
-- `hand rechts` / pijltje rechts: duwt de orb naar rechts
-- `hand omhoog` / pijltje omhoog: laat de orb hoog springen
-- `vuist` / spatiebalk: remt de orb af
+- `A` / pijltje links: naar links
+- `D` / pijltje rechts: naar rechts
+- `W` / pijltje omhoog / spatie: springen
+- `J` / `K`: aanvallen
+- `Shift`: dash
 
 ## Doel
 
-Raak de kyber crystal met de Force orb en scoor punten. Met `vuist` krijg je bonuspunten wanneer je de crystal raakt.
+Pak gems, ontwijk spikes, versla enemies en bereik de poort aan het einde van het level.
 
-## Opnieuw beginnen met Teachable Machine
+## Storage
 
-Deze versie bevat bewust nog geen model, webcam of `localStorage`. Zo kun je straks met een nieuwe Teachable Machine rustig opnieuw beginnen zonder oude instellingen of oude model-links.
+De beste score wordt opgeslagen in `localStorage` onder `mistfall-platformer`.
+
+## Gebruikte assets
+
+- Mist forest background uit de Legacy Collection
+- Bridge Heroine player sprites
+- Hell Hound en Mutant Toad enemy sprites
+- Gems spritesheet
