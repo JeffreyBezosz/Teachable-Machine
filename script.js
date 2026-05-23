@@ -81,6 +81,14 @@ let coyoteTimer     = 0;
 let jumpBuffer      = 0;
 let doubleJumpAvail = false;
 
+// quick polish effects
+let particles = [];
+let popups = [];
+let dashGhosts = [];
+let shakeTimer = 0;
+let shakePower = 0;
+let hurtFlash = 0;
+
 // respawn
 let checkpointX = 170, checkpointY = 540;
 
@@ -474,6 +482,7 @@ function draw() {
   handleInput();
   updateEnemies();
   handleCollisions();
+  updateEffects();
   handleCamera();
   drawScene();
   updateHud();
@@ -535,9 +544,14 @@ function handleInput() {
   if (dash && dashCooldown<=0) {
     player.vel.x = (facingLeft?-1:1)*16;
     dashCooldown = 44;
+    addBurst(player.x, player.y+26, "#8eeaff", 16);
   }
   if (attackTimer>0)  attackTimer--;
   if (dashCooldown>0) dashCooldown--;
+
+  if (dashCooldown>24 && frameCount%2===0) {
+    dashGhosts.push({ x: player.x, y: player.y, left: facingLeft, life: 14, maxLife: 14 });
+  }
 
   const WW = currentLevel===1 ? 4400 : 5300;
   player.x = constrain(player.x, 55, WW-80);
@@ -577,7 +591,10 @@ function handleCollisions() {
   if (player.y > WH+120) damagePlayer(1,true);
 
   player.overlaps(gems, (_p,gem)=>{
-    score+=20; bestScore=max(bestScore,score); gem.remove(); saveBest();
+    score+=20; bestScore=max(bestScore,score);
+    addBurst(gem.x, gem.y, currentLevel===2 ? "#caa8ff" : "#ffd86b", 18);
+    addPopup("+20", gem.x, gem.y-22, "#ffe57a");
+    gem.remove(); saveBest();
   });
 
   player.overlaps(checkpoints, (_p,pt)=>activateCheckpoint(pt));
@@ -633,13 +650,20 @@ function canHit(enemy) {
 }
 function defeatEnemy(enemy) {
   player.vel.y=min(player.vel.y,-8.5);
-  score+=enemy.kind==="toad"?45:35;
+  const points = enemy.kind==="toad"?45:35;
+  score+=points;
   bestScore=max(bestScore,score);
+  addBurst(enemy.x, enemy.y, enemy.kind==="toad" ? "#9cff78" : "#ff6b73", 22);
+  addPopup(`+${points}`, enemy.x, enemy.y-48, "#e9fff3");
   enemy.remove(); saveBest();
 }
 function damagePlayer(amount,respawn,srcX=player.x) {
   if (invincible>0 && !respawn) return;
   health-=amount; invincible=90;
+  hurtFlash = 18;
+  shakeTimer = 10;
+  shakePower = 8;
+  addBurst(player.x, player.y, "#ff6b6b", 18);
   player.vel.y=-9;
   player.vel.x=player.x<srcX?-9:9;
   if (health<=0) { health=MAX_HP; score=max(0,score-70); respawn=true; }
@@ -658,9 +682,43 @@ function handleCamera() {
   camera.zoom  = lerp(camera.zoom||zoom, zoom, 0.08);
   const viewW  = width/camera.zoom;
   const tx     = constrain(player.x+260, viewW/2, WW-viewW/2);
-  camera.x     = lerp(camera.x||tx, tx, 0.12);
+  camera.x     = lerp(camera.x||tx, tx, 0.12) + (shakeTimer>0 ? random(-shakePower, shakePower) : 0);
   const ty     = constrain(player.y-104, 420, 492);
-  camera.y     = lerp(camera.y||ty, ty, 0.12);
+  camera.y     = lerp(camera.y||ty, ty, 0.12) + (shakeTimer>0 ? random(-shakePower, shakePower) : 0);
+}
+
+function updateEffects() {
+  particles = particles
+    .map(p => ({ ...p, x: p.x+p.vx, y: p.y+p.vy, vy: p.vy+0.18, life: p.life-1 }))
+    .filter(p => p.life>0);
+  popups = popups
+    .map(p => ({ ...p, y: p.y-0.55, life: p.life-1 }))
+    .filter(p => p.life>0);
+  dashGhosts = dashGhosts
+    .map(g => ({ ...g, life: g.life-1 }))
+    .filter(g => g.life>0);
+  if (shakeTimer>0) shakeTimer--;
+  if (hurtFlash>0) hurtFlash--;
+}
+
+function addBurst(x, y, color, count) {
+  for (let i=0;i<count;i++) {
+    const a = random(TWO_PI);
+    const s = random(1.8, 6.2);
+    particles.push({
+      x, y,
+      vx: cos(a)*s,
+      vy: sin(a)*s-random(0.5,2.5),
+      size: random(3,8),
+      color,
+      life: random(18,34),
+      maxLife: 34,
+    });
+  }
+}
+
+function addPopup(text, x, y, color) {
+  popups.push({ text, x, y, color, life: 42, maxLife: 42 });
 }
 
 // ─── draw ─────────────────────────────────────────────────────────────────────
@@ -687,7 +745,9 @@ function drawScene() {
   drawGate();
   drawGems();
   drawEnemies();
+  drawDashGhosts();
   drawPlayer();
+  drawWorldEffects();
   camera.off();
   drawScreenEffects();
 }
@@ -895,6 +955,44 @@ function drawPlayer() {
   strokeWeight(1);
 }
 
+function drawDashGhosts() {
+  const grounded = isGrounded();
+  const frames = !grounded ? heroJumpFrames : isMoving ? heroRunFrames : heroIdleFrames;
+  const frame = frames[floor(frameCount/5)%frames.length];
+  imageMode(CENTER);
+  dashGhosts.forEach(g=>{
+    const a = map(g.life, 0, g.maxLife, 0, 95);
+    push();
+    translate(g.x, g.y-3);
+    scale(g.left?-1:1, 1);
+    tint(120,235,255,a);
+    drawHeroFrame(frame);
+    noTint();
+    pop();
+  });
+  imageMode(CORNER);
+}
+
+function drawWorldEffects() {
+  noStroke();
+  particles.forEach(p=>{
+    const a = map(p.life, 0, p.maxLife, 0, 230);
+    fill(red(color(p.color)), green(color(p.color)), blue(color(p.color)), a);
+    circle(p.x, p.y, p.size);
+  });
+  textAlign(CENTER,CENTER);
+  textStyle(BOLD);
+  popups.forEach(p=>{
+    const a = map(p.life, 0, p.maxLife, 0, 255);
+    fill(0,0,0,a*0.45);
+    textSize(20);
+    text(p.text, p.x+2, p.y+2);
+    fill(red(color(p.color)), green(color(p.color)), blue(color(p.color)), a);
+    text(p.text, p.x, p.y);
+  });
+  textStyle(NORMAL);
+}
+
 function drawHeroFrame(frame) {
   if (!frame?.img) return;
 
@@ -919,6 +1017,13 @@ function drawScreenEffects() {
   vig.addColorStop(1,currentLevel===2?"rgba(8,2,18,0.50)":"rgba(1,10,7,0.38)");
   drawingContext.fillStyle=vig;
   drawingContext.fillRect(0,0,width,height);
+
+  // hurt feedback
+  if (hurtFlash>0) {
+    const a = map(hurtFlash, 0, 18, 0, 90);
+    fill(255,70,70,a);
+    rect(0,0,width,height);
+  }
 
   // level transition
   if (transitionTimer>0) {
@@ -960,6 +1065,8 @@ function restartGame() {
   score=0; health=MAX_HP;
   attackTimer=0; dashCooldown=0; invincible=0;
   checkpointCooldown=0;
+  particles=[]; popups=[]; dashGhosts=[];
+  shakeTimer=0; shakePower=0; hurtFlash=0;
   coyoteTimer=0; jumpBuffer=0; doubleJumpAvail=false;
   checkpointX=170; checkpointY=540;
   ui.toast.textContent = "A/D bewegen - W of spatie springen - J aanvallen - Shift dash";
