@@ -64,6 +64,7 @@ button {
 .health-panel,
 .stat,
 #restartBtn,
+.tm-panel,
 .toast {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -125,6 +126,74 @@ button {
   border-color: var(--green);
 }
 
+.tm-panel {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 5;
+  width: min(430px, calc(100vw - 28px));
+  padding: 10px;
+  pointer-events: auto;
+}
+
+.tm-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.tm-heading span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.tm-heading strong {
+  color: var(--gold);
+  font-size: 1rem;
+}
+
+.tm-controls {
+  display: grid;
+  grid-template-columns: 1fr 116px;
+  gap: 8px;
+}
+
+.tm-controls input,
+.tm-controls button {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(5, 13, 9, 0.82);
+  color: var(--text);
+  font: inherit;
+}
+
+.tm-controls input {
+  min-width: 0;
+  padding: 0 10px;
+  font-weight: 700;
+}
+
+.tm-controls button {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.tm-controls button:hover {
+  border-color: var(--green);
+}
+
+.tm-prediction {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
 .toast {
   position: absolute;
   left: 14px;
@@ -157,5 +226,14 @@ button {
 
   #restartBtn {
     min-height: 46px;
+  }
+
+  .tm-panel {
+    right: 8px;
+    bottom: 58px;
+  }
+
+  .tm-controls {
+    grid-template-columns: 1fr;
   }
 }

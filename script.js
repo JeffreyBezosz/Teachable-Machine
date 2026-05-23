@@ -45,11 +45,16 @@ const ui = {
   healthFill: document.querySelector("#healthFill"),
   restartBtn: document.querySelector("#restartBtn"),
   toast:      document.querySelector("#toast"),
+  tmUrl:      document.querySelector("#tmUrl"),
+  tmStartBtn: document.querySelector("#tmStartBtn"),
+  tmStatus:   document.querySelector("#tmStatus"),
+  tmPrediction: document.querySelector("#tmPrediction"),
 };
 
 // ─── persistence ──────────────────────────────────────────────────────────────
 const storageKey = "mistfall-v3";
 const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
+let tmAudioUrl = String(saved.tmAudioUrl || "");
 
 // ─── loaded images ────────────────────────────────────────────────────────────
 let mistBackImg, mistBackTreesImg, mistTreeImg, mistRocksImg;
@@ -89,6 +94,18 @@ let shakeTimer = 0;
 let shakePower = 0;
 let hurtFlash = 0;
 
+// Teachable Machine audio state
+let tmRecognizer = null;
+let tmListening = false;
+let tmLastActionAt = 0;
+let tmLastClass = "stil";
+let tmLastProb = 0;
+let voiceRunTimer = 0;
+let voiceJumpQueued = false;
+let voiceAttackQueued = false;
+const TM_CONFIDENCE = 0.82;
+const TM_ACTION_COOLDOWN = 650;
+
 // respawn
 let checkpointX = 170, checkpointY = 540;
 
@@ -123,6 +140,7 @@ function setup() {
   loadLevel(1);
   spawnPlayer();
   updateHud();
+  initTeachableMachineUI();
 }
 function windowResized() { resizeCanvas(windowWidth, windowHeight); }
 
@@ -492,10 +510,16 @@ function draw() {
 function handleInput() {
   if (gameWon || transitionTimer>0) return;
 
-  const left   = kb.pressing("left")  || kb.pressing("a");
-  const right  = kb.pressing("right") || kb.pressing("d");
-  const jumpP  = kb.presses("up")     || kb.presses("w") || kb.presses("space");
-  const attack = kb.presses("j")      || kb.presses("k");
+  const voiceMove = voiceRunTimer > 0;
+  const voiceJump = voiceJumpQueued;
+  const voiceAttack = voiceAttackQueued;
+  voiceJumpQueued = false;
+  voiceAttackQueued = false;
+
+  const left   = kb.pressing("left")  || kb.pressing("a") || (voiceMove && facingLeft);
+  const right  = kb.pressing("right") || kb.pressing("d") || (voiceMove && !facingLeft);
+  const jumpP  = kb.presses("up")     || kb.presses("w") || kb.presses("space") || voiceJump;
+  const attack = kb.presses("j")      || kb.presses("k") || voiceAttack;
   const dash   = kb.presses("shift");
 
   // ── horizontal movement ───────────────────────────────────────────────────
@@ -552,6 +576,7 @@ function handleInput() {
   if (dashCooldown>24 && frameCount%2===0) {
     dashGhosts.push({ x: player.x, y: player.y, left: facingLeft, life: 14, maxLife: 14 });
   }
+  if (voiceRunTimer>0) voiceRunTimer--;
 
   const WW = currentLevel===1 ? 4400 : 5300;
   player.x = constrain(player.x, 55, WW-80);
@@ -1052,13 +1077,137 @@ function drawScreenEffects() {
 }
 
 // ─── HUD ──────────────────────────────────────────────────────────────────────
+function initTeachableMachineUI() {
+  if (!ui.tmUrl || !ui.tmStartBtn) return;
+  ui.tmUrl.value = tmAudioUrl;
+  ui.tmStartBtn.addEventListener("click", toggleTeachableMachineAudio);
+}
+
+async function toggleTeachableMachineAudio() {
+  if (tmListening) {
+    stopTeachableMachineAudio();
+    return;
+  }
+  await startTeachableMachineAudio();
+}
+
+async function startTeachableMachineAudio() {
+  const url = normalizeModelUrl(ui.tmUrl?.value || tmAudioUrl);
+  if (!url) {
+    setTmStatus("Plak eerst je Audio Model URL", "roep = loop + spring | klap = attack | stil = rust");
+    return;
+  }
+  if (typeof speechCommands === "undefined") {
+    setTmStatus("Audio library niet geladen", "Herlaad de pagina en probeer opnieuw.");
+    return;
+  }
+
+  try {
+    ui.tmStartBtn.disabled = true;
+    setTmStatus("Model laden...", "Geef microfoon-toegang wanneer de browser dat vraagt.");
+    tmRecognizer = await createAudioRecognizer(url);
+    const labels = tmRecognizer.wordLabels();
+    tmRecognizer.listen(result => handleAudioPrediction(labels, result.scores), {
+      includeSpectrogram: true,
+      probabilityThreshold: 0.65,
+      invokeCallbackOnNoiseAndUnknown: true,
+      overlapFactor: 0.5,
+    });
+
+    tmListening = true;
+    tmAudioUrl = url;
+    saveState({ tmAudioUrl });
+    ui.tmStartBtn.textContent = "Stop audio";
+    setTmStatus("Audio actief", "Luister naar: roep, klap, stil");
+  } catch (error) {
+    setTmStatus("Audio start mislukt", "Check of je Teachable Machine Audio URL klopt.");
+  } finally {
+    ui.tmStartBtn.disabled = false;
+  }
+}
+
+function stopTeachableMachineAudio() {
+  try {
+    if (tmRecognizer?.isListening?.()) tmRecognizer.stopListening();
+  } catch {}
+  tmListening = false;
+  ui.tmStartBtn.textContent = "Start audio";
+  setTmStatus("Audio pauze", "Keyboard blijft werken.");
+}
+
+async function createAudioRecognizer(url) {
+  const checkpointURL = url + "model.json";
+  const metadataURL = url + "metadata.json";
+  const recognizer = speechCommands.create("BROWSER_FFT", undefined, checkpointURL, metadataURL);
+  await recognizer.ensureModelLoaded();
+  return recognizer;
+}
+
+function handleAudioPrediction(labels, scores) {
+  let top = { label: "", score: 0 };
+  labels.forEach((label, i) => {
+    const score = scores[i] || 0;
+    if (score > top.score) top = { label, score };
+  });
+
+  tmLastClass = normalizeClassName(top.label);
+  tmLastProb = top.score;
+  setTmStatus("Audio actief", `${top.label}: ${Math.round(top.score * 100)}%`);
+
+  if (top.score < TM_CONFIDENCE) return;
+  if (tmLastClass === "stil" || tmLastClass === "rust" || tmLastClass === "background_noise") return;
+
+  const now = Date.now();
+  if (now - tmLastActionAt < TM_ACTION_COOLDOWN) return;
+  tmLastActionAt = now;
+
+  if (tmLastClass === "roep") {
+    voiceRunTimer = 34;
+    voiceJumpQueued = true;
+    if (player) {
+      addBurst(player.x, player.y + 20, "#8eeaff", 12);
+      addPopup("roep", player.x, player.y - 54, "#8eeaff");
+    }
+  }
+
+  if (tmLastClass === "klap") {
+    voiceAttackQueued = true;
+    if (player) {
+      addBurst(player.x + (facingLeft ? -34 : 34), player.y - 4, "#ffe57a", 14);
+      addPopup("klap", player.x, player.y - 54, "#ffe57a");
+    }
+  }
+}
+
+function normalizeClassName(label) {
+  return String(label || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+}
+
+function normalizeModelUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  return value.endsWith("/") ? value : `${value}/`;
+}
+
+function setTmStatus(status, prediction) {
+  if (ui.tmStatus) ui.tmStatus.textContent = status;
+  if (ui.tmPrediction) ui.tmPrediction.textContent = prediction;
+}
+
 function updateHud() {
   bestScore=max(bestScore,score);
   ui.score.textContent    =score;
   ui.bestScore.textContent=bestScore;
   ui.healthFill.style.width=`${(health/MAX_HP)*100}%`;
 }
-function saveBest() { localStorage.setItem(storageKey,JSON.stringify({bestScore})); }
+function saveState(extra={}) {
+  const current = JSON.parse(localStorage.getItem(storageKey) || "{}");
+  localStorage.setItem(storageKey, JSON.stringify({ ...current, bestScore, tmAudioUrl, ...extra }));
+}
+function saveBest() { saveState(); }
 
 // ─── restart ──────────────────────────────────────────────────────────────────
 function restartGame() {
@@ -1067,9 +1216,10 @@ function restartGame() {
   checkpointCooldown=0;
   particles=[]; popups=[]; dashGhosts=[];
   shakeTimer=0; shakePower=0; hurtFlash=0;
+  voiceRunTimer=0; voiceJumpQueued=false; voiceAttackQueued=false;
   coyoteTimer=0; jumpBuffer=0; doubleJumpAvail=false;
   checkpointX=170; checkpointY=540;
-  ui.toast.textContent = "A/D bewegen - W of spatie springen - J aanvallen - Shift dash";
+  ui.toast.textContent = "Keyboard of audio: roep = spring vooruit, klap = attack, stil = rust";
   loadLevel(1);
   spawnPlayer();
   updateHud();

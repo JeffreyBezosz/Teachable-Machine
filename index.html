@@ -36,12 +36,26 @@
         <button id="restartBtn" type="button">Restart</button>
       </header>
 
-      <div class="toast" id="toast">A/D bewegen - W of spatie springen - J aanvallen - Shift dash</div>
+      <section class="tm-panel" aria-label="Teachable Machine audio controls">
+        <div class="tm-heading">
+          <span>Teachable Machine</span>
+          <strong id="tmStatus">Audio uit</strong>
+        </div>
+        <div class="tm-controls">
+          <input id="tmUrl" type="url" placeholder="Plak Audio Model URL" autocomplete="off" />
+          <button id="tmStartBtn" type="button">Start audio</button>
+        </div>
+        <div id="tmPrediction" class="tm-prediction">roep = loop + spring | klap = attack | stil = rust</div>
+      </section>
+
+      <div class="toast" id="toast">Keyboard of audio: roep = spring vooruit, klap = attack, stil = rust</div>
     </main>
 
     <script src="https://q5js.org/q5.js"></script>
     <script src="https://p5play.org/v3/planck.min.js"></script>
     <script src="https://p5play.org/v3/p5play.js"></script>
-    <script src="script.js?v=20"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
+    <script src="script.js?v=21"></script>
   </body>
 </html>
