@@ -31,12 +31,15 @@ const player = {
 let platforms = [];
 let gems = [];
 let enemies = [];
+let hazards = [];
+let checkpoints = [];
 let cameraX = 0;
 let score = 0;
 let hitCooldown = 0;
 let health = MAX_HEALTH;
 let attackTimer = 0;
 let invincible = 0;
+let activeCheckpoint = { x: 170, y: 0, name: "Moss" };
 
 function setup() {
   new Canvas(windowWidth, windowHeight);
@@ -51,6 +54,9 @@ function setup() {
   buildPlatforms();
   buildGems();
   buildEnemies();
+  buildHazards();
+  buildCheckpoints();
+  setStartCheckpoint();
   placePlayerOnGround();
   ui.status.textContent = "Moss";
   updateScore();
@@ -62,6 +68,9 @@ function windowResized() {
   buildPlatforms();
   buildGems();
   buildEnemies();
+  buildHazards();
+  buildCheckpoints();
+  if (activeCheckpoint.name === "Moss") setStartCheckpoint();
   if (player.grounded) placePlayerOnGround();
 }
 
@@ -71,12 +80,16 @@ function draw() {
   handleAttackHits();
   collectGems();
   handleEnemyCollisions();
+  handleHazardCollisions();
+  handleCheckpointCollisions();
   updateCamera();
   drawMistBackground();
   push();
   translate(-cameraX, 0);
   drawStartGround();
   drawPlatforms();
+  drawHazards();
+  drawCheckpoints();
   drawGems();
   drawEnemies();
   drawPlayer();
@@ -204,6 +217,31 @@ function buildEnemies() {
   ];
 }
 
+function buildHazards() {
+  const groundY = getGroundY();
+  hazards = [
+    { x: 980, y: groundY, w: 112 },
+    { x: 1670, y: groundY, w: 140 },
+    { x: 2350, y: groundY, w: 112 },
+  ];
+}
+
+function buildCheckpoints() {
+  const groundY = getGroundY();
+  checkpoints = [
+    { x: 1060, y: groundY - 50, name: "Moss Rise", active: activeCheckpoint.name === "Moss Rise" },
+    { x: 1900, y: groundY - 50, name: "Old Roots", active: activeCheckpoint.name === "Old Roots" },
+  ];
+}
+
+function setStartCheckpoint() {
+  activeCheckpoint = {
+    x: 170,
+    y: getGroundY() - player.height / 2,
+    name: "Moss",
+  };
+}
+
 function placePlayerOnGround() {
   player.y = getGroundY() - player.height / 2;
   player.vy = 0;
@@ -309,6 +347,47 @@ function handleEnemyCollisions() {
   }
 }
 
+function handleHazardCollisions() {
+  if (hitCooldown > 0 || invincible > 0) return;
+
+  const playerBottom = player.y + player.height / 2;
+  for (const hazard of hazards) {
+    const closeX = abs(player.x - hazard.x) < hazard.w / 2 + player.width / 2;
+    const closeY = playerBottom > hazard.y - 38 && playerBottom < hazard.y + 12;
+    if (closeX && closeY) {
+      damagePlayer(player.x, true);
+      return;
+    }
+  }
+}
+
+function handleCheckpointCollisions() {
+  for (const checkpoint of checkpoints) {
+    const closeX = abs(player.x - checkpoint.x) < 36;
+    const closeY = abs(player.y - checkpoint.y) < 70;
+    if (!checkpoint.active && closeX && closeY) {
+      activateCheckpoint(checkpoint);
+      return;
+    }
+  }
+}
+
+function activateCheckpoint(checkpoint) {
+  for (const other of checkpoints) {
+    other.active = false;
+  }
+
+  checkpoint.active = true;
+  activeCheckpoint = {
+    x: checkpoint.x,
+    y: getGroundY() - player.height / 2,
+    name: checkpoint.name,
+  };
+  health = MAX_HEALTH;
+  ui.status.textContent = checkpoint.name;
+  updateHealth();
+}
+
 function handleAttackHits() {
   if (attackTimer <= 0) return;
 
@@ -334,7 +413,7 @@ function handleAttackHits() {
   }
 }
 
-function damagePlayer(sourceX) {
+function damagePlayer(sourceX, forceRespawn = false) {
   hitCooldown = 60;
   invincible = 90;
   health -= 1;
@@ -346,6 +425,10 @@ function damagePlayer(sourceX) {
   player.vy = -8;
   player.grounded = false;
 
+  if (forceRespawn) {
+    respawnPlayer();
+  }
+
   if (health <= 0) {
     health = MAX_HEALTH;
     updateHealth();
@@ -354,10 +437,11 @@ function damagePlayer(sourceX) {
 }
 
 function respawnPlayer() {
-  player.x = 170;
+  player.x = activeCheckpoint.x;
+  player.y = activeCheckpoint.y;
   player.vx = 0;
   player.vy = 0;
-  placePlayerOnGround();
+  player.grounded = true;
 }
 
 function updateScore() {
@@ -423,6 +507,38 @@ function drawEnemies() {
     ellipse(-14, -7, 7, 5);
     pop();
   }
+}
+
+function drawHazards() {
+  for (const hazard of hazards) {
+    const left = hazard.x - hazard.w / 2;
+
+    noStroke();
+    fill("#09130f");
+    rect(left - 10, hazard.y, hazard.w + 20, 24);
+
+    for (let x = left; x < left + hazard.w; x += 28) {
+      fill("#eadfb7");
+      triangle(x, hazard.y, x + 14, hazard.y - 38, x + 28, hazard.y);
+      fill("#fff7ce");
+      triangle(x + 9, hazard.y - 17, x + 14, hazard.y - 38, x + 19, hazard.y - 17);
+    }
+  }
+}
+
+function drawCheckpoints() {
+  for (const checkpoint of checkpoints) {
+    stroke("#0d211a");
+    strokeWeight(5);
+    line(checkpoint.x, checkpoint.y + 36, checkpoint.x, checkpoint.y - 36);
+    noStroke();
+
+    fill(checkpoint.active ? "#9be69d" : "#ffd866");
+    rect(checkpoint.x, checkpoint.y - 36, 42, 28, 5);
+    fill("#f3fff6");
+    rect(checkpoint.x + 7, checkpoint.y - 29, 18, 14, 3);
+  }
+  strokeWeight(1);
 }
 
 function drawPlayer() {
