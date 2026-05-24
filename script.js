@@ -3,6 +3,13 @@ const ui = {
   status: document.querySelector("#status"),
 };
 
+const player = {
+  x: 170,
+  y: 0,
+  width: 34,
+  height: 64,
+};
+
 function setup() {
   new Canvas(windowWidth, windowHeight);
 
@@ -13,7 +20,8 @@ function setup() {
   }
 
   world.gravity.y = 30;
-  ui.status.textContent = "canvas";
+  placePlayerOnGround();
+  ui.status.textContent = "Moss";
 }
 
 function windowResized() {
@@ -23,6 +31,7 @@ function windowResized() {
 function draw() {
   drawMistBackground();
   drawStartGround();
+  drawPlayer();
 }
 
 function drawMistBackground() {
@@ -58,5 +67,39 @@ function drawStartGround() {
   text("Mistfall Gate", width / 2, height / 2 - 20);
   fill("#b8cdbc");
   textSize(16);
-  text("Basis klaar voor de volgende commit", width / 2, height / 2 + 18);
+  text("Een stille ingang tussen mist en mos", width / 2, height / 2 + 18);
+}
+
+function placePlayerOnGround() {
+  player.y = height - 130 - player.height / 2;
+}
+
+function drawPlayer() {
+  const bob = sin(frameCount * 0.08) * 2;
+  const feetY = player.y + player.height / 2;
+
+  noStroke();
+  fill(0, 0, 0, 80);
+  ellipse(player.x, feetY + 5, 48, 12);
+
+  push();
+  translate(player.x, player.y + bob);
+
+  fill("#222936");
+  rectMode(CENTER);
+  rect(0, 6, player.width, player.height - 12, 6);
+
+  fill("#ffd86b");
+  rect(0, -18, 22, 20, 4);
+
+  fill("#f3fff6");
+  rect(-8, 18, 7, 26, 3);
+  rect(8, 18, 7, 26, 3);
+
+  fill("#9be69d");
+  rect(-18, 4, 8, 32, 3);
+  rect(18, 4, 8, 32, 3);
+
+  rectMode(CORNER);
+  pop();
 }
