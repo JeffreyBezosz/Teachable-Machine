@@ -1,6 +1,7 @@
 const ui = {
   score: document.querySelector("#score"),
   status: document.querySelector("#status"),
+  healthFill: document.querySelector("#healthFill"),
 };
 
 const physics = {
@@ -10,6 +11,7 @@ const physics = {
 };
 
 const WORLD_WIDTH = 2600;
+const MAX_HEALTH = 4;
 
 const player = {
   x: 170,
@@ -32,6 +34,9 @@ let enemies = [];
 let cameraX = 0;
 let score = 0;
 let hitCooldown = 0;
+let health = MAX_HEALTH;
+let attackTimer = 0;
+let invincible = 0;
 
 function setup() {
   new Canvas(windowWidth, windowHeight);
@@ -49,6 +54,7 @@ function setup() {
   placePlayerOnGround();
   ui.status.textContent = "Moss";
   updateScore();
+  updateHealth();
 }
 
 function windowResized() {
@@ -62,6 +68,7 @@ function windowResized() {
 function draw() {
   updatePlayer();
   updateEnemies();
+  handleAttackHits();
   collectGems();
   handleEnemyCollisions();
   updateCamera();
@@ -76,12 +83,15 @@ function draw() {
   pop();
 
   if (hitCooldown > 0) hitCooldown--;
+  if (attackTimer > 0) attackTimer--;
+  if (invincible > 0) invincible--;
 }
 
 function updatePlayer() {
   const left = kb.pressing("a") || kb.pressing("left");
   const right = kb.pressing("d") || kb.pressing("right");
   const jump = kb.presses("w") || kb.presses("space") || kb.presses("up");
+  const attack = kb.presses("j") || kb.presses("k");
   const previousBottom = player.y + player.height / 2;
 
   player.moving = left || right;
@@ -109,6 +119,10 @@ function updatePlayer() {
   if (jump && player.grounded) {
     player.vy = -physics.jumpStrength;
     player.grounded = false;
+  }
+
+  if (attack) {
+    attackTimer = 16;
   }
 
   player.vy += physics.gravity;
@@ -264,6 +278,8 @@ function collectGems() {
 
 function updateEnemies() {
   for (const enemy of enemies) {
+    if (enemy.defeated) continue;
+
     enemy.x += enemy.speed * enemy.dir;
 
     if (enemy.x < enemy.left) {
@@ -279,18 +295,61 @@ function updateEnemies() {
 }
 
 function handleEnemyCollisions() {
-  if (hitCooldown > 0) return;
+  if (hitCooldown > 0 || invincible > 0) return;
 
   for (const enemy of enemies) {
+    if (enemy.defeated) continue;
+
     const closeX = abs(player.x - enemy.x) < 34;
     const closeY = abs(player.y - enemy.y) < 50;
     if (closeX && closeY) {
-      hitCooldown = 70;
-      score = max(0, score - 10);
-      updateScore();
-      respawnPlayer();
+      damagePlayer(enemy.x);
       return;
     }
+  }
+}
+
+function handleAttackHits() {
+  if (attackTimer <= 0) return;
+
+  const direction = player.facingLeft ? -1 : 1;
+  let defeatedAny = false;
+
+  for (const enemy of enemies) {
+    if (enemy.defeated) continue;
+
+    const inFront = direction > 0 ? enemy.x > player.x - 8 : enemy.x < player.x + 8;
+    const closeX = abs(enemy.x - player.x) < 86;
+    const closeY = abs(enemy.y - player.y) < 72;
+
+    if (inFront && closeX && closeY) {
+      enemy.defeated = true;
+      score += 25;
+      defeatedAny = true;
+    }
+  }
+
+  if (defeatedAny) {
+    updateScore();
+  }
+}
+
+function damagePlayer(sourceX) {
+  hitCooldown = 60;
+  invincible = 90;
+  health -= 1;
+  score = max(0, score - 5);
+  updateScore();
+  updateHealth();
+
+  player.vx = player.x < sourceX ? -8 : 8;
+  player.vy = -8;
+  player.grounded = false;
+
+  if (health <= 0) {
+    health = MAX_HEALTH;
+    updateHealth();
+    respawnPlayer();
   }
 }
 
@@ -303,6 +362,10 @@ function respawnPlayer() {
 
 function updateScore() {
   ui.score.textContent = score;
+}
+
+function updateHealth() {
+  ui.healthFill.style.width = `${(health / MAX_HEALTH) * 100}%`;
 }
 
 function updateCamera() {
@@ -332,6 +395,8 @@ function drawGems() {
 
 function drawEnemies() {
   for (const enemy of enemies) {
+    if (enemy.defeated) continue;
+
     const squash = sin(frameCount * 0.12 + enemy.x * 0.02) * 3;
 
     noStroke();
@@ -374,6 +439,9 @@ function drawPlayer() {
   scale(player.facingLeft ? -1 : 1, 1);
 
   fill("#222936");
+  if (invincible > 0 && frameCount % 8 < 4) {
+    fill("#6b7484");
+  }
   rectMode(CENTER);
   const bodyTilt = player.grounded ? 0 : player.vy < 0 ? -0.08 : 0.08;
   rotate(bodyTilt);
@@ -391,6 +459,13 @@ function drawPlayer() {
   const armSwing = player.grounded ? walkCycle * 2 : 5;
   rect(-18, 4 - armSwing, 8, 32, 3);
   rect(18, 4 + armSwing, 8, 32, 3);
+
+  if (attackTimer > 0) {
+    fill(255, 232, 130, 105);
+    arc(34, -2, 78, 48, -0.75, 0.75);
+    fill("#fff3b0");
+    rect(24, -6, 48, 6, 3);
+  }
 
   rectMode(CORNER);
   pop();
