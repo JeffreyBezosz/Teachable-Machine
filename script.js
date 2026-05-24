@@ -1,9 +1,51 @@
+const legacyBase = "assets/Legacy Collection/Legacy Collection/Assets";
+const assetPaths = {
+  mistBack: `${legacyBase}/Gothicvania/Environments/mist-forest-background/layers/mist-forest-background-back.png`,
+  mistBackTrees: `${legacyBase}/Gothicvania/Environments/mist-forest-background/layers/mist-forest-background-back-trees.png`,
+  mistTree: `${legacyBase}/Gothicvania/Environments/mist-forest-background/layers/mist-forest-background-tree.png`,
+  heroIdle: [1, 2, 3, 4].map((n) => `${legacyBase}/Gothicvania/Characters/Bridge Heroine/Heroine base/Sprites/idle/player-idle-${n}.png`),
+  heroRun: [1, 2, 3, 4, 5, 6, 7].map((n) => `${legacyBase}/Gothicvania/Characters/Bridge Heroine/Heroine base/Sprites/run/player-run-${n}.png`),
+  heroJump: [1, 2, 3, 4].map((n) => `${legacyBase}/Gothicvania/Characters/Bridge Heroine/Heroine base/Sprites/jump/player-jump-${n}.png`),
+  gems: `${legacyBase}/Misc/gems/spritesheets/gems-spritesheet.png`,
+  slimes: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((n) => `assets/Slimes/SlimeGreen/SlimeBasic_${String(n).padStart(5, "0")}.png`),
+};
+
+const heroBounds = {
+  idle: [
+    { x: 56, y: 23, w: 16, h: 41 },
+    { x: 55, y: 24, w: 18, h: 40 },
+    { x: 54, y: 25, w: 20, h: 39 },
+    { x: 55, y: 24, w: 18, h: 40 },
+  ],
+  run: [
+    { x: 54, y: 30, w: 26, h: 34 },
+    { x: 60, y: 29, w: 19, h: 35 },
+    { x: 53, y: 26, w: 26, h: 38 },
+    { x: 51, y: 29, w: 30, h: 35 },
+    { x: 57, y: 30, w: 22, h: 34 },
+    { x: 53, y: 26, w: 28, h: 38 },
+    { x: 51, y: 28, w: 31, h: 36 },
+  ],
+  jump: [
+    { x: 53, y: 21, w: 25, h: 43 },
+    { x: 52, y: 25, w: 20, h: 34 },
+    { x: 52, y: 17, w: 20, h: 47 },
+    { x: 52, y: 16, w: 20, h: 48 },
+  ],
+};
+
 const ui = {
+  areaName: document.querySelector("#areaName"),
   score: document.querySelector("#score"),
   bestScore: document.querySelector("#bestScore"),
-  status: document.querySelector("#status"),
+  level: document.querySelector("#level"),
   healthFill: document.querySelector("#healthFill"),
   restartBtn: document.querySelector("#restartBtn"),
+  toast: document.querySelector("#toast"),
+  tmUrl: document.querySelector("#tmUrl"),
+  tmStartBtn: document.querySelector("#tmStartBtn"),
+  tmStatus: document.querySelector("#tmStatus"),
+  tmPrediction: document.querySelector("#tmPrediction"),
 };
 
 const physics = {
@@ -16,6 +58,7 @@ const WORLD_WIDTH = 2600;
 const MAX_HEALTH = 4;
 const storageKey = "mistfall-score-v1";
 const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
+const DEFAULT_TM_AUDIO_URL = "https://teachablemachine.withgoogle.com/models/bAWcVjBBs/";
 
 const player = {
   x: 170,
@@ -47,6 +90,32 @@ let attackTimer = 0;
 let invincible = 0;
 let activeCheckpoint = { x: 170, y: 0, name: "Moss" };
 let gameWon = false;
+let tmAudioUrl = String(saved.tmAudioUrl || DEFAULT_TM_AUDIO_URL);
+let tmRecognizer = null;
+let tmListening = false;
+let tmLastActionAt = 0;
+let voiceRunTimer = 0;
+let voiceJumpQueued = false;
+let voiceAttackQueued = false;
+let mistBackImg;
+let mistBackTreesImg;
+let mistTreeImg;
+let heroIdleFrames = [];
+let heroRunFrames = [];
+let heroJumpFrames = [];
+let slimeFrames = [];
+let gemsImage;
+
+function preload() {
+  mistBackImg = loadImage(assetPaths.mistBack);
+  mistBackTreesImg = loadImage(assetPaths.mistBackTrees);
+  mistTreeImg = loadImage(assetPaths.mistTree);
+  heroIdleFrames = assetPaths.heroIdle.map((path, index) => ({ img: loadImage(path), ...heroBounds.idle[index] }));
+  heroRunFrames = assetPaths.heroRun.map((path, index) => ({ img: loadImage(path), ...heroBounds.run[index] }));
+  heroJumpFrames = assetPaths.heroJump.map((path, index) => ({ img: loadImage(path), ...heroBounds.jump[index] }));
+  slimeFrames = assetPaths.slimes.map((path) => loadImage(path));
+  gemsImage = loadImage(assetPaths.gems);
+}
 
 function setup() {
   new Canvas(windowWidth, windowHeight);
@@ -65,10 +134,12 @@ function setup() {
   buildCheckpoints();
   setStartCheckpoint();
   placePlayerOnGround();
-  ui.status.textContent = "Moss";
+  ui.areaName.textContent = "Moss Gate";
+  ui.level.textContent = "1";
   updateScore();
   updateHealth();
   ui.restartBtn.addEventListener("click", restartGame);
+  initTeachableMachineUI();
 }
 
 function windowResized() {
@@ -114,10 +185,16 @@ function draw() {
 }
 
 function updatePlayer() {
-  const left = kb.pressing("a") || kb.pressing("left");
-  const right = kb.pressing("d") || kb.pressing("right");
-  const jump = kb.presses("w") || kb.presses("space") || kb.presses("up");
-  const attack = kb.presses("j") || kb.presses("k");
+  const voiceMove = voiceRunTimer > 0;
+  const voiceJump = voiceJumpQueued;
+  const voiceAttack = voiceAttackQueued;
+  voiceJumpQueued = false;
+  voiceAttackQueued = false;
+
+  const left = kb.pressing("a") || kb.pressing("left") || (voiceMove && player.facingLeft);
+  const right = kb.pressing("d") || kb.pressing("right") || (voiceMove && !player.facingLeft);
+  const jump = kb.presses("w") || kb.presses("space") || kb.presses("up") || voiceJump;
+  const attack = kb.presses("j") || kb.presses("k") || voiceAttack;
   const previousBottom = player.y + player.height / 2;
 
   player.moving = left || right;
@@ -158,6 +235,8 @@ function updatePlayer() {
 
   resolvePlatformLandings(previousBottom);
   resolveGroundLanding();
+
+  if (voiceRunTimer > 0) voiceRunTimer--;
 }
 
 function drawMistBackground() {
@@ -171,12 +250,29 @@ function drawMistBackground() {
     rect(0, y, width, 4);
   }
 
+  drawParallaxLayer(mistBackImg, height, 0.08, 255);
+  drawParallaxLayer(mistBackTreesImg, height, 0.14, 105);
+  drawParallaxLayer(mistTreeImg, height, 0.22, 145);
+
   fill(240, 255, 247, 32);
   for (let i = 0; i < 34; i++) {
     const x = (i * 173 + frameCount * 0.18 - cameraX * 0.18) % (width + 120) - 60;
     const y = 120 + (i * 67) % max(220, height - 240);
     circle(x, y, 2 + (i % 3));
   }
+}
+
+function drawParallaxLayer(img, drawHeight, speed, alpha) {
+  if (!img) return;
+
+  const drawWidth = img.width * (drawHeight / img.height);
+  const offset = -((cameraX * speed) % drawWidth);
+
+  tint(255, 255, 255, alpha);
+  for (let x = offset - drawWidth; x < width + drawWidth; x += drawWidth) {
+    image(img, x, 0, drawWidth, drawHeight);
+  }
+  noTint();
 }
 
 function drawStartGround() {
@@ -393,7 +489,7 @@ function handleGateCollision() {
 
   gameWon = true;
   score += 100;
-  ui.status.textContent = "Gate";
+  ui.areaName.textContent = "Gate";
   updateScore();
   saveBestScore();
 }
@@ -410,7 +506,7 @@ function activateCheckpoint(checkpoint) {
     name: checkpoint.name,
   };
   health = MAX_HEALTH;
-  ui.status.textContent = checkpoint.name;
+  ui.areaName.textContent = checkpoint.name;
   updateHealth();
 }
 
@@ -482,7 +578,125 @@ function updateHealth() {
 }
 
 function saveBestScore() {
-  localStorage.setItem(storageKey, JSON.stringify({ bestScore }));
+  localStorage.setItem(storageKey, JSON.stringify({ bestScore, tmAudioUrl }));
+}
+
+function initTeachableMachineUI() {
+  if (!ui.tmUrl || !ui.tmStartBtn) return;
+  ui.tmUrl.value = tmAudioUrl;
+  ui.tmStartBtn.addEventListener("click", toggleTeachableMachineAudio);
+}
+
+async function toggleTeachableMachineAudio() {
+  if (tmListening) {
+    stopTeachableMachineAudio();
+    return;
+  }
+
+  await startTeachableMachineAudio();
+}
+
+async function startTeachableMachineAudio() {
+  const url = normalizeModelUrl(ui.tmUrl?.value || tmAudioUrl);
+  if (!url) {
+    setTmStatus("Plak eerst je Audio Model URL", "roep = loop + spring | klap = attack | stil = rust");
+    return;
+  }
+
+  if (typeof speechCommands === "undefined") {
+    setTmStatus("Audio library mist", "Herlaad de pagina en probeer opnieuw.");
+    return;
+  }
+
+  try {
+    ui.tmStartBtn.disabled = true;
+    setTmStatus("Model laden...", "Geef microfoon-toegang wanneer de browser dat vraagt.");
+    tmRecognizer = await createAudioRecognizer(url);
+    const labels = tmRecognizer.wordLabels();
+    tmRecognizer.listen((result) => handleAudioPrediction(labels, result.scores), {
+      includeSpectrogram: true,
+      probabilityThreshold: 0.65,
+      invokeCallbackOnNoiseAndUnknown: true,
+      overlapFactor: 0.5,
+    });
+
+    tmListening = true;
+    tmAudioUrl = url;
+    saveBestScore();
+    ui.tmStartBtn.textContent = "Stop audio";
+    setTmStatus("Audio actief", "Luister naar: roep, klap, stil");
+  } catch (error) {
+    setTmStatus("Audio start mislukt", "Check of je Teachable Machine Audio URL klopt.");
+  } finally {
+    ui.tmStartBtn.disabled = false;
+  }
+}
+
+function stopTeachableMachineAudio() {
+  try {
+    if (tmRecognizer?.isListening?.()) tmRecognizer.stopListening();
+  } catch {}
+
+  tmListening = false;
+  ui.tmStartBtn.textContent = "Start audio";
+  setTmStatus("Audio pauze", "Keyboard blijft werken.");
+}
+
+async function createAudioRecognizer(url) {
+  const recognizer = speechCommands.create("BROWSER_FFT", undefined, url + "model.json", url + "metadata.json");
+  await recognizer.ensureModelLoaded();
+  return recognizer;
+}
+
+function handleAudioPrediction(labels, scores) {
+  let top = { label: "", score: 0 };
+  labels.forEach((label, index) => {
+    const score = scores[index] || 0;
+    if (score > top.score) top = { label, score };
+  });
+
+  const className = normalizeClassName(top.label);
+  setTmStatus("Audio actief", `${top.label}: ${Math.round(top.score * 100)}%`);
+  if (top.score < 0.82 || isRestClass(className)) return;
+
+  const now = Date.now();
+  if (now - tmLastActionAt < 650) return;
+  tmLastActionAt = now;
+
+  if (className === "roep") {
+    voiceRunTimer = 34;
+    voiceJumpQueued = true;
+    ui.toast.textContent = "roep: spring vooruit";
+    return;
+  }
+
+  if (className === "klap") {
+    voiceAttackQueued = true;
+    ui.toast.textContent = "klap: attack";
+  }
+}
+
+function normalizeClassName(label) {
+  return String(label || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function isRestClass(label) {
+  return label === "stil" || label === "rust" || label.includes("background") || label.includes("noise");
+}
+
+function normalizeModelUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  return value.endsWith("/") ? value : `${value}/`;
+}
+
+function setTmStatus(status, prediction) {
+  if (ui.tmStatus) ui.tmStatus.textContent = status;
+  if (ui.tmPrediction) ui.tmPrediction.textContent = prediction;
 }
 
 function restartGame() {
@@ -491,6 +705,9 @@ function restartGame() {
   hitCooldown = 0;
   attackTimer = 0;
   invincible = 0;
+  voiceRunTimer = 0;
+  voiceJumpQueued = false;
+  voiceAttackQueued = false;
   gameWon = false;
   cameraX = 0;
   setStartCheckpoint();
@@ -498,7 +715,9 @@ function restartGame() {
   buildEnemies();
   buildCheckpoints();
   respawnPlayer();
-  ui.status.textContent = "Moss";
+  ui.areaName.textContent = "Moss Gate";
+  ui.level.textContent = "1";
+  ui.toast.textContent = "Keyboard of audio: roep = spring vooruit, klap = attack, stil = rust";
   updateScore();
   updateHealth();
 }
@@ -513,17 +732,24 @@ function drawGems() {
     if (gem.collected) continue;
 
     const bob = sin(frameCount * 0.08 + gem.x * 0.01) * 5;
+    const frame = floor(frameCount / 8) % 6;
 
     push();
     translate(gem.x, gem.y + bob);
-    rotate(QUARTER_PI);
-    noStroke();
-    fill("#b49cff");
-    rectMode(CENTER);
-    rect(0, 0, 24, 24, 4);
-    fill("#fff3b0");
-    rect(-3, -3, 9, 9, 2);
-    rectMode(CORNER);
+    if (gemsImage) {
+      imageMode(CENTER);
+      image(gemsImage, 0, 0, 34, 34, 610 + frame * 28, 24, 22, 22);
+      imageMode(CORNER);
+    } else {
+      rotate(QUARTER_PI);
+      noStroke();
+      fill("#b49cff");
+      rectMode(CENTER);
+      rect(0, 0, 24, 24, 4);
+      fill("#fff3b0");
+      rect(-3, -3, 9, 9, 2);
+      rectMode(CORNER);
+    }
     pop();
   }
 }
@@ -541,21 +767,19 @@ function drawEnemies() {
     push();
     translate(enemy.x, enemy.y + squash);
     scale(enemy.dir < 0 ? -1 : 1, 1);
-
-    fill("#77d96b");
-    ellipse(0, 8, 54, 38);
-    fill("#9cff8f");
-    ellipse(-8, 0, 32, 24);
-
-    fill("#15311f");
-    ellipse(11, 3, 5, 7);
-    stroke("#15311f");
-    strokeWeight(3);
-    line(15, 15, 24, 11);
-    noStroke();
-
-    fill("#d8ffd4");
-    ellipse(-14, -7, 7, 5);
+    const frame = slimeFrames[floor(frameCount / 4) % slimeFrames.length];
+    if (frame) {
+      imageMode(CENTER);
+      image(frame, 0, 0, 72, 54);
+      imageMode(CORNER);
+    } else {
+      fill("#77d96b");
+      ellipse(0, 8, 54, 38);
+      fill("#9cff8f");
+      ellipse(-8, 0, 32, 24);
+      fill("#15311f");
+      ellipse(11, 3, 5, 7);
+    }
     pop();
   }
 }
@@ -626,8 +850,10 @@ function drawWinOverlay() {
 }
 
 function drawPlayer() {
-  const walkCycle = player.moving && player.grounded ? sin(frameCount * 0.24) : 0;
-  const bob = player.grounded ? player.moving ? abs(walkCycle) * 3 : sin(frameCount * 0.08) * 2 : 0;
+  const frames = !player.grounded ? heroJumpFrames : player.moving ? heroRunFrames : heroIdleFrames;
+  const frameSpeed = !player.grounded ? 7 : player.moving ? 5 : 10;
+  const frame = frames[floor(frameCount / frameSpeed) % frames.length];
+  const bob = player.grounded && !player.moving ? sin(frameCount * 0.08) * 2 : 0;
   const feetY = player.y + player.height / 2;
 
   noStroke();
@@ -638,27 +864,9 @@ function drawPlayer() {
   translate(player.x, player.y + bob);
   scale(player.facingLeft ? -1 : 1, 1);
 
-  fill("#222936");
-  if (invincible > 0 && frameCount % 8 < 4) {
-    fill("#6b7484");
-  }
-  rectMode(CENTER);
-  const bodyTilt = player.grounded ? 0 : player.vy < 0 ? -0.08 : 0.08;
-  rotate(bodyTilt);
-  rect(0, 6, player.width, player.height - 12, 6);
-
-  fill("#ffd86b");
-  rect(0, -18, 22, 20, 4);
-
-  fill("#f3fff6");
-  const legLift = player.grounded ? walkCycle * 4 : -4;
-  rect(-8, 18 + legLift, 7, 26, 3);
-  rect(8, 18 - legLift, 7, 26, 3);
-
-  fill("#9be69d");
-  const armSwing = player.grounded ? walkCycle * 2 : 5;
-  rect(-18, 4 - armSwing, 8, 32, 3);
-  rect(18, 4 + armSwing, 8, 32, 3);
+  if (invincible > 0 && frameCount % 8 < 4) tint(255, 255, 255, 145);
+  drawHeroFrame(frame);
+  noTint();
 
   if (attackTimer > 0) {
     fill(255, 232, 130, 105);
@@ -669,4 +877,23 @@ function drawPlayer() {
 
   rectMode(CORNER);
   pop();
+}
+
+function drawHeroFrame(frame) {
+  if (!frame?.img) return;
+
+  const padX = 8;
+  const padTop = 7;
+  const padBottom = 2;
+  const sx = max(0, frame.x - padX);
+  const sy = max(0, frame.y - padTop);
+  const sw = min(frame.img.width - sx, frame.w + padX * 2);
+  const sh = min(frame.img.height - sy, frame.h + padTop + padBottom);
+  const targetH = 92;
+  const targetW = sw * (targetH / sh);
+  const footY = 34;
+
+  imageMode(CENTER);
+  image(frame.img, 0, footY - targetH / 2, targetW, targetH, sx, sy, sw, sh);
+  imageMode(CORNER);
 }

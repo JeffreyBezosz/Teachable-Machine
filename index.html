@@ -8,12 +8,19 @@
   </head>
   <body>
     <main class="game-shell">
-      <div id="gameMount" class="game-mount" aria-label="Mistfall Gate game canvas"></div>
+      <div id="gameMount" class="game-mount" aria-label="Mistfall Gate platformer"></div>
 
       <header class="hud">
         <div class="brand">
           <span>Mistfall Gate</span>
-          <strong>Moss Gate</strong>
+          <strong id="areaName">Moss Gate</strong>
+        </div>
+
+        <div class="health-panel" aria-label="Health">
+          <span>HP</span>
+          <div class="health-frame">
+            <i id="healthFill"></i>
+          </div>
         </div>
 
         <div class="stat">
@@ -26,27 +33,34 @@
           <strong id="bestScore">0</strong>
         </div>
 
-        <div class="health-panel" aria-label="Health">
-          <span>HP</span>
-          <div class="health-frame">
-            <i id="healthFill"></i>
-          </div>
-        </div>
-
         <div class="stat">
-          <span>Gebied</span>
-          <strong id="status">Start</strong>
+          <span>Level</span>
+          <strong id="level">1</strong>
         </div>
 
         <button id="restartBtn" type="button">Restart</button>
       </header>
 
-      <div class="toast">Bereik de poort aan het einde van het mosgebied.</div>
+      <section class="tm-panel" aria-label="Teachable Machine audio controls">
+        <div class="tm-heading">
+          <span>Teachable Machine</span>
+          <strong id="tmStatus">Audio uit</strong>
+        </div>
+        <div class="tm-controls">
+          <input id="tmUrl" type="url" placeholder="Audio Model URL" autocomplete="off" />
+          <button id="tmStartBtn" type="button">Start audio</button>
+        </div>
+        <div id="tmPrediction" class="tm-prediction">roep = loop + spring | klap = attack | stil = rust</div>
+      </section>
+
+      <div class="toast" id="toast">Keyboard of audio: roep = spring vooruit, klap = attack, stil = rust</div>
     </main>
 
     <script src="https://q5js.org/q5.js"></script>
     <script src="https://p5play.org/v3/planck.min.js"></script>
     <script src="https://p5play.org/v3/p5play.js"></script>
-    <script src="script.js?v=11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
+    <script src="script.js?v=13"></script>
   </body>
 </html>
