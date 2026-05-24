@@ -10,6 +10,8 @@ const assets = {
   heroJump: [1,2,3,4].map(n=>`${legacyBase}/Gothicvania/Characters/Bridge Heroine/Heroine base/Sprites/jump/player-jump-${n}.png`),
   houndRun: [1,2,3,4,5].map(n=>`${legacyBase}/Gothicvania/Characters/Hell-Hound-Files/Sprites/Run/frame${n}.png`),
   toadIdle: [1,2,3,4].map(n=>`${legacyBase}/Gothicvania/Characters/mutant-toad/Sprites/idle/mutant-toad-idle${n}.png`),
+  crowFly: [1,2].map(n=>`${legacyBase}/Gothicvania/Characters/crow/Sprites/fly/crow-fly${n}.png`),
+  energySmack: Array.from({length:8}, (_,i)=>`${legacyBase}/Explosions and Magic/Grotto-escape-2-FX/sprites/energy-smack/_000${i}_Layer-${i+1}.png`),
   gems:      `${legacyBase}/Misc/gems/spritesheets/gems-spritesheet.png`,
 };
 
@@ -61,7 +63,7 @@ let tmAudioUrl = String(saved.tmAudioUrl || DEFAULT_TM_AUDIO_URL);
 // ─── loaded images ────────────────────────────────────────────────────────────
 let mistBackImg, mistBackTreesImg, mistTreeImg, mistRocksImg;
 let heroIdleFrames=[], heroRunFrames=[], heroJumpFrames=[];
-let houndRunFrames=[], toadIdleFrames=[];
+let houndRunFrames=[], toadIdleFrames=[], crowFlyFrames=[], energySmackFrames=[];
 let gemsImage;
 
 // ─── sprite groups ────────────────────────────────────────────────────────────
@@ -104,6 +106,7 @@ let tmLastClass = "stil";
 let tmLastProb = 0;
 let voiceRunTimer = 0;
 let voiceJumpQueued = false;
+let voiceDoubleJumpQueued = false;
 let voiceAttackQueued = false;
 const TM_CONFIDENCE = 0.82;
 const TM_ACTION_COOLDOWN = 650;
@@ -127,6 +130,8 @@ function preload() {
   heroJumpFrames   = assets.heroJump.map((p,i)=>({ img: loadImage(p), ...heroBounds.jump[i] }));
   houndRunFrames   = assets.houndRun.map(p=>loadImage(p));
   toadIdleFrames   = assets.toadIdle.map(p=>loadImage(p));
+  crowFlyFrames     = assets.crowFly.map(p=>loadImage(p));
+  energySmackFrames = assets.energySmack.map(p=>loadImage(p));
   gemsImage        = loadImage(assets.gems);
 }
 
@@ -514,8 +519,10 @@ function handleInput() {
 
   const voiceMove = voiceRunTimer > 0;
   const voiceJump = voiceJumpQueued;
+  const voiceDoubleJump = voiceDoubleJumpQueued;
   const voiceAttack = voiceAttackQueued;
   voiceJumpQueued = false;
+  voiceDoubleJumpQueued = false;
   voiceAttackQueued = false;
 
   const left   = kb.pressing("left")  || kb.pressing("a") || (voiceMove && facingLeft);
@@ -556,7 +563,12 @@ function handleInput() {
   if (jumpP)        jumpBuffer = 10;
   if (jumpBuffer>0) jumpBuffer--;
 
-  if (jumpBuffer>0 && coyoteTimer>0) {
+  if (voiceDoubleJump && !grounded && doubleJumpAvail) {
+    player.vel.y = -15.4;
+    doubleJumpAvail = false;
+    coyoteTimer = 0;
+    jumpBuffer = 0;
+  } else if (jumpBuffer>0 && coyoteTimer>0) {
     player.vel.y = -17.2;
     coyoteTimer  = 0;
     jumpBuffer   = 0;
@@ -836,6 +848,26 @@ function drawWorldDecor() {
   if(currentLevel===2) tint(120,80,160,95); else tint(255,255,255,95);
   for (let x=-80;x<WW+280;x+=680) image(mistRocksImg,x,628,360,360);
   noTint();
+  drawCrows(WW);
+}
+
+function drawCrows(worldWidth) {
+  if (!crowFlyFrames.length) return;
+  const fr = crowFlyFrames[floor(frameCount / 10) % crowFlyFrames.length];
+  imageMode(CENTER);
+  for (let i = 0; i < 4; i++) {
+    const x = ((frameCount * (0.58 + i * 0.05) + i * 940) % (worldWidth + 520)) - 260;
+    const y = 210 + (i % 3) * 54 + sin(frameCount * 0.025 + i) * 12;
+    const s = i % 2 === 0 ? 1 : 0.82;
+    push();
+    translate(x, y);
+    scale(-s, s);
+    tint(255, 255, 255, currentLevel === 2 ? 85 : 125);
+    image(fr, 0, 0, 46, 34);
+    noTint();
+    pop();
+  }
+  imageMode(CORNER);
 }
 
 function drawPlatforms() {
@@ -995,6 +1027,12 @@ function drawPlayer() {
   if (attackTimer>0) {
     fill(205,248,255,90); arc(36,-8,82,56,-0.75,0.75);
     fill("#e8fff7"); rect(26,-12,54,7,3);
+    const smack = energySmackFrames[floor((18 - attackTimer) / 3) % energySmackFrames.length];
+    if (smack) {
+      tint(160, 240, 255, 185);
+      image(smack, 52, -8, 82, 62);
+      noTint();
+    }
   }
   pop();
   imageMode(CORNER);
@@ -1115,7 +1153,7 @@ async function toggleTeachableMachineAudio() {
 async function startTeachableMachineAudio() {
   const url = normalizeModelUrl(ui.tmUrl?.value || tmAudioUrl);
   if (!url) {
-    setTmStatus("Plak eerst je Audio Model URL", "roep (aaa) = loop + spring | klap = attack | stil = rust");
+    setTmStatus("Plak eerst je Audio Model URL", "roep (aaa) = loop + spring | klap = attack, in de lucht double jump | stil = rust");
     return;
   }
   if (typeof speechCommands === "undefined") {
@@ -1182,7 +1220,8 @@ function handleAudioPrediction(labels, scores) {
   if (!isRoep && !isKlap) return;
 
   const now = Date.now();
-  if (now - tmLastActionAt < TM_ACTION_COOLDOWN) return;
+  const airKlapReady = isKlap && player && !isGrounded() && doubleJumpAvail;
+  if (!airKlapReady && now - tmLastActionAt < TM_ACTION_COOLDOWN) return;
   tmLastActionAt = now;
 
   if (isRoep) {
@@ -1196,8 +1235,19 @@ function handleAudioPrediction(labels, scores) {
   }
 
   if (isKlap) {
+    const airborne = player && !isGrounded();
+    if (airborne) {
+      voiceDoubleJumpQueued = true;
+      ui.toast.textContent = doubleJumpAvail ? "klap in de lucht: double jump" : "klap in de lucht: double jump al gebruikt";
+      if (doubleJumpAvail) {
+        addBurst(player.x, player.y + 12, "#8eeaff", 16);
+        addPopup("double jump", player.x, player.y - 54, "#8eeaff");
+      }
+      return;
+    }
+
     voiceAttackQueued = true;
-    ui.toast.textContent = "klap: attack";
+    ui.toast.textContent = "klap op grond: attack";
     if (player) {
       addBurst(player.x + (facingLeft ? -34 : 34), player.y - 4, "#ffe57a", 14);
       addPopup("klap", player.x, player.y - 54, "#ffe57a");
@@ -1264,10 +1314,10 @@ function restartGame() {
   checkpointCooldown=0;
   particles=[]; popups=[]; dashGhosts=[];
   shakeTimer=0; shakePower=0; hurtFlash=0;
-  voiceRunTimer=0; voiceJumpQueued=false; voiceAttackQueued=false;
+  voiceRunTimer=0; voiceJumpQueued=false; voiceDoubleJumpQueued=false; voiceAttackQueued=false;
   coyoteTimer=0; jumpBuffer=0; doubleJumpAvail=false;
   checkpointX=170; checkpointY=540;
-  ui.toast.textContent = "Keyboard of audio: roep (aaa) = spring vooruit, klap = attack, stil = rust";
+  ui.toast.textContent = "Keyboard of audio: roep (aaa) = spring vooruit, klap op grond = attack, klap in lucht = double jump";
   loadLevel(1);
   spawnPlayer();
   updateHud();
