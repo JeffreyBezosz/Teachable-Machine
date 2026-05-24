@@ -6,8 +6,14 @@ const ui = {
 const player = {
   x: 170,
   y: 0,
+  vx: 0,
   width: 34,
   height: 64,
+  speed: 0.85,
+  maxSpeed: 6,
+  friction: 0.78,
+  facingLeft: false,
+  moving: false,
 };
 
 function setup() {
@@ -29,9 +35,37 @@ function windowResized() {
 }
 
 function draw() {
+  updatePlayer();
   drawMistBackground();
   drawStartGround();
   drawPlayer();
+}
+
+function updatePlayer() {
+  const left = kb.pressing("a") || kb.pressing("left");
+  const right = kb.pressing("d") || kb.pressing("right");
+
+  player.moving = left || right;
+
+  if (left) {
+    player.vx -= player.speed;
+    player.facingLeft = true;
+  }
+
+  if (right) {
+    player.vx += player.speed;
+    player.facingLeft = false;
+  }
+
+  if (!player.moving) {
+    player.vx *= player.friction;
+  }
+
+  player.vx = constrain(player.vx, -player.maxSpeed, player.maxSpeed);
+  if (abs(player.vx) < 0.05) player.vx = 0;
+
+  player.x += player.vx;
+  player.x = constrain(player.x, player.width / 2 + 20, width - player.width / 2 - 20);
 }
 
 function drawMistBackground() {
@@ -75,7 +109,8 @@ function placePlayerOnGround() {
 }
 
 function drawPlayer() {
-  const bob = sin(frameCount * 0.08) * 2;
+  const walkCycle = player.moving ? sin(frameCount * 0.24) : 0;
+  const bob = player.moving ? abs(walkCycle) * 3 : sin(frameCount * 0.08) * 2;
   const feetY = player.y + player.height / 2;
 
   noStroke();
@@ -84,6 +119,7 @@ function drawPlayer() {
 
   push();
   translate(player.x, player.y + bob);
+  scale(player.facingLeft ? -1 : 1, 1);
 
   fill("#222936");
   rectMode(CENTER);
@@ -93,12 +129,12 @@ function drawPlayer() {
   rect(0, -18, 22, 20, 4);
 
   fill("#f3fff6");
-  rect(-8, 18, 7, 26, 3);
-  rect(8, 18, 7, 26, 3);
+  rect(-8, 18 + walkCycle * 4, 7, 26, 3);
+  rect(8, 18 - walkCycle * 4, 7, 26, 3);
 
   fill("#9be69d");
-  rect(-18, 4, 8, 32, 3);
-  rect(18, 4, 8, 32, 3);
+  rect(-18, 4 - walkCycle * 2, 8, 32, 3);
+  rect(18, 4 + walkCycle * 2, 8, 32, 3);
 
   rectMode(CORNER);
   pop();
