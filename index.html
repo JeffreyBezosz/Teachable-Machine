@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mistfall Gate</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <div id="gameMount" class="game-mount" aria-label="Mistfall Gate game canvas"></div>
+
+      <header class="hud">
+        <div class="brand">
+          <span>Mistfall Gate</span>
+          <strong>Project start</strong>
+        </div>
+
+        <div class="stat">
+          <span>Score</span>
+          <strong id="score">0</strong>
+        </div>
+
+        <div class="stat">
+          <span>Status</span>
+          <strong id="status">setup</strong>
+        </div>
+      </header>
+
+      <div class="toast">Deel 1: basispagina, HUD en p5play canvas.</div>
+    </main>
+
+    <script src="https://q5js.org/q5.js"></script>
+    <script src="https://p5play.org/v3/planck.min.js"></script>
+    <script src="https://p5play.org/v3/p5play.js"></script>
+    <script src="script.js?v=1"></script>
+  </body>
+</html>
