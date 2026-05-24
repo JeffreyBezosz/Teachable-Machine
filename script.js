@@ -54,7 +54,8 @@ const ui = {
 // ─── persistence ──────────────────────────────────────────────────────────────
 const storageKey = "mistfall-v3";
 const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
-let tmAudioUrl = String(saved.tmAudioUrl || "");
+const DEFAULT_TM_AUDIO_URL = "https://teachablemachine.withgoogle.com/models/bAWcVjBBs/";
+let tmAudioUrl = String(saved.tmAudioUrl || DEFAULT_TM_AUDIO_URL);
 
 // ─── loaded images ────────────────────────────────────────────────────────────
 let mistBackImg, mistBackTreesImg, mistTreeImg, mistRocksImg;
@@ -1155,7 +1156,7 @@ function handleAudioPrediction(labels, scores) {
   setTmStatus("Audio actief", `${top.label}: ${Math.round(top.score * 100)}%`);
 
   if (top.score < TM_CONFIDENCE) return;
-  if (tmLastClass === "stil" || tmLastClass === "rust" || tmLastClass === "background_noise") return;
+  if (isRestClass(tmLastClass)) return;
 
   const now = Date.now();
   if (now - tmLastActionAt < TM_ACTION_COOLDOWN) return;
@@ -1183,7 +1184,12 @@ function normalizeClassName(label) {
   return String(label || "")
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, "_");
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function isRestClass(label) {
+  return label === "stil" || label === "rust" || label.includes("background") || label.includes("noise");
 }
 
 function normalizeModelUrl(raw) {
