@@ -3,10 +3,17 @@ const ui = {
   status: document.querySelector("#status"),
 };
 
+const physics = {
+  gravity: 0.82,
+  jumpStrength: 17,
+  maxFallSpeed: 22,
+};
+
 const player = {
   x: 170,
   y: 0,
   vx: 0,
+  vy: 0,
   width: 34,
   height: 64,
   speed: 0.85,
@@ -14,6 +21,7 @@ const player = {
   friction: 0.78,
   facingLeft: false,
   moving: false,
+  grounded: true,
 };
 
 function setup() {
@@ -32,6 +40,7 @@ function setup() {
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
+  if (player.grounded) placePlayerOnGround();
 }
 
 function draw() {
@@ -44,6 +53,7 @@ function draw() {
 function updatePlayer() {
   const left = kb.pressing("a") || kb.pressing("left");
   const right = kb.pressing("d") || kb.pressing("right");
+  const jump = kb.presses("w") || kb.presses("space") || kb.presses("up");
 
   player.moving = left || right;
 
@@ -66,6 +76,22 @@ function updatePlayer() {
 
   player.x += player.vx;
   player.x = constrain(player.x, player.width / 2 + 20, width - player.width / 2 - 20);
+
+  if (jump && player.grounded) {
+    player.vy = -physics.jumpStrength;
+    player.grounded = false;
+  }
+
+  player.vy += physics.gravity;
+  player.vy = min(player.vy, physics.maxFallSpeed);
+  player.y += player.vy;
+
+  const floorY = getGroundY() - player.height / 2;
+  if (player.y >= floorY) {
+    player.y = floorY;
+    player.vy = 0;
+    player.grounded = true;
+  }
 }
 
 function drawMistBackground() {
@@ -88,7 +114,7 @@ function drawMistBackground() {
 }
 
 function drawStartGround() {
-  const groundY = height - 130;
+  const groundY = getGroundY();
   noStroke();
   fill("#19372f");
   rect(0, groundY, width, height - groundY);
@@ -105,12 +131,18 @@ function drawStartGround() {
 }
 
 function placePlayerOnGround() {
-  player.y = height - 130 - player.height / 2;
+  player.y = getGroundY() - player.height / 2;
+  player.vy = 0;
+  player.grounded = true;
+}
+
+function getGroundY() {
+  return height - 130;
 }
 
 function drawPlayer() {
-  const walkCycle = player.moving ? sin(frameCount * 0.24) : 0;
-  const bob = player.moving ? abs(walkCycle) * 3 : sin(frameCount * 0.08) * 2;
+  const walkCycle = player.moving && player.grounded ? sin(frameCount * 0.24) : 0;
+  const bob = player.grounded ? player.moving ? abs(walkCycle) * 3 : sin(frameCount * 0.08) * 2 : 0;
   const feetY = player.y + player.height / 2;
 
   noStroke();
@@ -123,18 +155,22 @@ function drawPlayer() {
 
   fill("#222936");
   rectMode(CENTER);
+  const bodyTilt = player.grounded ? 0 : player.vy < 0 ? -0.08 : 0.08;
+  rotate(bodyTilt);
   rect(0, 6, player.width, player.height - 12, 6);
 
   fill("#ffd86b");
   rect(0, -18, 22, 20, 4);
 
   fill("#f3fff6");
-  rect(-8, 18 + walkCycle * 4, 7, 26, 3);
-  rect(8, 18 - walkCycle * 4, 7, 26, 3);
+  const legLift = player.grounded ? walkCycle * 4 : -4;
+  rect(-8, 18 + legLift, 7, 26, 3);
+  rect(8, 18 - legLift, 7, 26, 3);
 
   fill("#9be69d");
-  rect(-18, 4 - walkCycle * 2, 8, 32, 3);
-  rect(18, 4 + walkCycle * 2, 8, 32, 3);
+  const armSwing = player.grounded ? walkCycle * 2 : 5;
+  rect(-18, 4 - armSwing, 8, 32, 3);
+  rect(18, 4 + armSwing, 8, 32, 3);
 
   rectMode(CORNER);
   pop();
