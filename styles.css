@@ -57,6 +57,7 @@ body {
 .brand,
 .health-panel,
 .stat,
+#restartBtn,
 .toast {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -92,6 +93,22 @@ body {
   color: var(--gold);
   font-size: 1.2rem;
   line-height: 1.1;
+}
+
+#restartBtn {
+  min-width: 92px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--panel);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+#restartBtn:hover {
+  border-color: var(--green);
 }
 
 .health-panel {

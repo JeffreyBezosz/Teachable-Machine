@@ -1,7 +1,9 @@
 const ui = {
   score: document.querySelector("#score"),
+  bestScore: document.querySelector("#bestScore"),
   status: document.querySelector("#status"),
   healthFill: document.querySelector("#healthFill"),
+  restartBtn: document.querySelector("#restartBtn"),
 };
 
 const physics = {
@@ -12,6 +14,8 @@ const physics = {
 
 const WORLD_WIDTH = 2600;
 const MAX_HEALTH = 4;
+const storageKey = "mistfall-score-v1";
+const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
 
 const player = {
   x: 170,
@@ -33,13 +37,16 @@ let gems = [];
 let enemies = [];
 let hazards = [];
 let checkpoints = [];
+let gate = { x: 2520, y: 0 };
 let cameraX = 0;
 let score = 0;
+let bestScore = Number(saved.bestScore || 0);
 let hitCooldown = 0;
 let health = MAX_HEALTH;
 let attackTimer = 0;
 let invincible = 0;
 let activeCheckpoint = { x: 170, y: 0, name: "Moss" };
+let gameWon = false;
 
 function setup() {
   new Canvas(windowWidth, windowHeight);
@@ -61,6 +68,7 @@ function setup() {
   ui.status.textContent = "Moss";
   updateScore();
   updateHealth();
+  ui.restartBtn.addEventListener("click", restartGame);
 }
 
 function windowResized() {
@@ -75,13 +83,16 @@ function windowResized() {
 }
 
 function draw() {
-  updatePlayer();
-  updateEnemies();
-  handleAttackHits();
-  collectGems();
-  handleEnemyCollisions();
-  handleHazardCollisions();
-  handleCheckpointCollisions();
+  if (!gameWon) {
+    updatePlayer();
+    updateEnemies();
+    handleAttackHits();
+    collectGems();
+    handleEnemyCollisions();
+    handleHazardCollisions();
+    handleCheckpointCollisions();
+    handleGateCollision();
+  }
   updateCamera();
   drawMistBackground();
   push();
@@ -90,10 +101,12 @@ function draw() {
   drawPlatforms();
   drawHazards();
   drawCheckpoints();
+  drawGate();
   drawGems();
   drawEnemies();
   drawPlayer();
   pop();
+  drawWinOverlay();
 
   if (hitCooldown > 0) hitCooldown--;
   if (attackTimer > 0) attackTimer--;
@@ -232,6 +245,7 @@ function buildCheckpoints() {
     { x: 1060, y: groundY - 50, name: "Moss Rise", active: activeCheckpoint.name === "Moss Rise" },
     { x: 1900, y: groundY - 50, name: "Old Roots", active: activeCheckpoint.name === "Old Roots" },
   ];
+  gate = { x: WORLD_WIDTH - 110, y: groundY - 76 };
 }
 
 function setStartCheckpoint() {
@@ -372,6 +386,18 @@ function handleCheckpointCollisions() {
   }
 }
 
+function handleGateCollision() {
+  const closeX = abs(player.x - gate.x) < 55;
+  const closeY = abs(player.y - gate.y) < 90;
+  if (!closeX || !closeY) return;
+
+  gameWon = true;
+  score += 100;
+  ui.status.textContent = "Gate";
+  updateScore();
+  saveBestScore();
+}
+
 function activateCheckpoint(checkpoint) {
   for (const other of checkpoints) {
     other.active = false;
@@ -445,11 +471,36 @@ function respawnPlayer() {
 }
 
 function updateScore() {
+  bestScore = max(bestScore, score);
   ui.score.textContent = score;
+  ui.bestScore.textContent = bestScore;
+  saveBestScore();
 }
 
 function updateHealth() {
   ui.healthFill.style.width = `${(health / MAX_HEALTH) * 100}%`;
+}
+
+function saveBestScore() {
+  localStorage.setItem(storageKey, JSON.stringify({ bestScore }));
+}
+
+function restartGame() {
+  score = 0;
+  health = MAX_HEALTH;
+  hitCooldown = 0;
+  attackTimer = 0;
+  invincible = 0;
+  gameWon = false;
+  cameraX = 0;
+  setStartCheckpoint();
+  buildGems();
+  buildEnemies();
+  buildCheckpoints();
+  respawnPlayer();
+  ui.status.textContent = "Moss";
+  updateScore();
+  updateHealth();
 }
 
 function updateCamera() {
@@ -539,6 +590,39 @@ function drawCheckpoints() {
     rect(checkpoint.x + 7, checkpoint.y - 29, 18, 14, 3);
   }
   strokeWeight(1);
+}
+
+function drawGate() {
+  noStroke();
+  fill(110, 180, 145, 54);
+  ellipse(gate.x, gate.y, 118, 170);
+  fill("#203b33");
+  rect(gate.x - 48, gate.y - 72, 14, 144, 4);
+  rect(gate.x + 34, gate.y - 72, 14, 144, 4);
+  rect(gate.x - 48, gate.y - 82, 96, 18, 4);
+  fill("#9dd5b5");
+  rect(gate.x - 30, gate.y - 54, 60, 108, 8);
+  fill("#d8fff0");
+  rect(gate.x - 18, gate.y - 36, 36, 72, 6);
+  fill(180, 255, 210, 28 + sin(frameCount * 0.06) * 14);
+  ellipse(gate.x, gate.y, 78, 124);
+}
+
+function drawWinOverlay() {
+  if (!gameWon) return;
+
+  noStroke();
+  fill(4, 16, 12, 178);
+  rect(0, 0, width, height);
+  textAlign(CENTER, CENTER);
+  fill("#f3fff6");
+  textSize(46);
+  text("Moss Gate geopend", width / 2, height / 2 - 24);
+  fill("#b8cdbc");
+  textSize(18);
+  text("Score " + score + "  |  Beste " + bestScore, width / 2, height / 2 + 22);
+  fill("#9be69d");
+  text("Klik Restart om opnieuw te spelen", width / 2, height / 2 + 58);
 }
 
 function drawPlayer() {
