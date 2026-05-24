@@ -9,6 +9,8 @@ const physics = {
   maxFallSpeed: 22,
 };
 
+const WORLD_WIDTH = 2600;
+
 const player = {
   x: 170,
   y: 0,
@@ -25,6 +27,11 @@ const player = {
 };
 
 let platforms = [];
+let gems = [];
+let enemies = [];
+let cameraX = 0;
+let score = 0;
+let hitCooldown = 0;
 
 function setup() {
   new Canvas(windowWidth, windowHeight);
@@ -37,22 +44,38 @@ function setup() {
 
   world.gravity.y = 30;
   buildPlatforms();
+  buildGems();
+  buildEnemies();
   placePlayerOnGround();
   ui.status.textContent = "Moss";
+  updateScore();
 }
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
   buildPlatforms();
+  buildGems();
+  buildEnemies();
   if (player.grounded) placePlayerOnGround();
 }
 
 function draw() {
   updatePlayer();
+  updateEnemies();
+  collectGems();
+  handleEnemyCollisions();
+  updateCamera();
   drawMistBackground();
+  push();
+  translate(-cameraX, 0);
   drawStartGround();
   drawPlatforms();
+  drawGems();
+  drawEnemies();
   drawPlayer();
+  pop();
+
+  if (hitCooldown > 0) hitCooldown--;
 }
 
 function updatePlayer() {
@@ -81,7 +104,7 @@ function updatePlayer() {
   if (abs(player.vx) < 0.05) player.vx = 0;
 
   player.x += player.vx;
-  player.x = constrain(player.x, player.width / 2 + 20, width - player.width / 2 - 20);
+  player.x = constrain(player.x, player.width / 2 + 20, WORLD_WIDTH - player.width / 2 - 20);
 
   if (jump && player.grounded) {
     player.vy = -physics.jumpStrength;
@@ -110,7 +133,7 @@ function drawMistBackground() {
 
   fill(240, 255, 247, 32);
   for (let i = 0; i < 34; i++) {
-    const x = (i * 173 + frameCount * 0.18) % (width + 120) - 60;
+    const x = (i * 173 + frameCount * 0.18 - cameraX * 0.18) % (width + 120) - 60;
     const y = 120 + (i * 67) % max(220, height - 240);
     circle(x, y, 2 + (i % 3));
   }
@@ -120,29 +143,51 @@ function drawStartGround() {
   const groundY = getGroundY();
   noStroke();
   fill("#19372f");
-  rect(0, groundY, width, height - groundY);
+  rect(0, groundY, WORLD_WIDTH, height - groundY);
   fill("#7fc579");
-  rect(0, groundY - 8, width, 8);
+  rect(0, groundY - 8, WORLD_WIDTH, 8);
 
   fill("#f3fff6");
   textAlign(CENTER, CENTER);
   textSize(28);
-  text("Mistfall Gate", width / 2, height / 2 - 20);
+  text("Mistfall Gate", 420, height / 2 - 20);
   fill("#b8cdbc");
   textSize(16);
-  text("Een stille ingang tussen mist en mos", width / 2, height / 2 + 18);
+  text("Een stille ingang tussen mist en mos", 420, height / 2 + 18);
 }
 
 function buildPlatforms() {
   const groundY = getGroundY();
   platforms = [
-    { x: width * 0.36, y: groundY - 105, w: 170, h: 22 },
-    { x: width * 0.58, y: groundY - 195, w: 190, h: 22 },
-    { x: width * 0.78, y: groundY - 135, w: 155, h: 22 },
-  ].map((platform) => ({
-    ...platform,
-    x: constrain(platform.x, platform.w / 2 + 30, width - platform.w / 2 - 30),
-  }));
+    { x: 520, y: groundY - 105, w: 170, h: 22 },
+    { x: 830, y: groundY - 195, w: 190, h: 22 },
+    { x: 1130, y: groundY - 130, w: 180, h: 22 },
+    { x: 1460, y: groundY - 230, w: 190, h: 22 },
+    { x: 1810, y: groundY - 145, w: 220, h: 22 },
+    { x: 2220, y: groundY - 205, w: 190, h: 22 },
+  ];
+}
+
+function buildGems() {
+  const groundY = getGroundY();
+  gems = [
+    { x: 520, y: groundY - 155, collected: false },
+    { x: 830, y: groundY - 245, collected: false },
+    { x: 1130, y: groundY - 180, collected: false },
+    { x: 1460, y: groundY - 280, collected: false },
+    { x: 1810, y: groundY - 195, collected: false },
+    { x: 2220, y: groundY - 255, collected: false },
+    { x: 2460, y: groundY - 70, collected: false },
+  ];
+}
+
+function buildEnemies() {
+  const groundY = getGroundY();
+  enemies = [
+    { x: 700, y: groundY - 24, left: 610, right: 790, speed: 1.4, dir: 1 },
+    { x: 1280, y: groundY - 24, left: 1190, right: 1390, speed: 1.7, dir: -1 },
+    { x: 2040, y: groundY - 24, left: 1900, right: 2160, speed: 1.5, dir: 1 },
+  ];
 }
 
 function placePlayerOnGround() {
@@ -200,6 +245,118 @@ function drawPlatforms() {
     rect(left, top - 5, platform.w, 8, 4);
     fill("#b7e6a5");
     rect(left + 8, top - 9, platform.w - 16, 4, 3);
+  }
+}
+
+function collectGems() {
+  for (const gem of gems) {
+    if (gem.collected) continue;
+
+    const closeX = abs(player.x - gem.x) < 34;
+    const closeY = abs(player.y - gem.y) < 46;
+    if (closeX && closeY) {
+      gem.collected = true;
+      score += 10;
+      updateScore();
+    }
+  }
+}
+
+function updateEnemies() {
+  for (const enemy of enemies) {
+    enemy.x += enemy.speed * enemy.dir;
+
+    if (enemy.x < enemy.left) {
+      enemy.x = enemy.left;
+      enemy.dir = 1;
+    }
+
+    if (enemy.x > enemy.right) {
+      enemy.x = enemy.right;
+      enemy.dir = -1;
+    }
+  }
+}
+
+function handleEnemyCollisions() {
+  if (hitCooldown > 0) return;
+
+  for (const enemy of enemies) {
+    const closeX = abs(player.x - enemy.x) < 34;
+    const closeY = abs(player.y - enemy.y) < 50;
+    if (closeX && closeY) {
+      hitCooldown = 70;
+      score = max(0, score - 10);
+      updateScore();
+      respawnPlayer();
+      return;
+    }
+  }
+}
+
+function respawnPlayer() {
+  player.x = 170;
+  player.vx = 0;
+  player.vy = 0;
+  placePlayerOnGround();
+}
+
+function updateScore() {
+  ui.score.textContent = score;
+}
+
+function updateCamera() {
+  const targetX = constrain(player.x - width * 0.36, 0, max(0, WORLD_WIDTH - width));
+  cameraX = lerp(cameraX, targetX, 0.12);
+}
+
+function drawGems() {
+  for (const gem of gems) {
+    if (gem.collected) continue;
+
+    const bob = sin(frameCount * 0.08 + gem.x * 0.01) * 5;
+
+    push();
+    translate(gem.x, gem.y + bob);
+    rotate(QUARTER_PI);
+    noStroke();
+    fill("#b49cff");
+    rectMode(CENTER);
+    rect(0, 0, 24, 24, 4);
+    fill("#fff3b0");
+    rect(-3, -3, 9, 9, 2);
+    rectMode(CORNER);
+    pop();
+  }
+}
+
+function drawEnemies() {
+  for (const enemy of enemies) {
+    const squash = sin(frameCount * 0.12 + enemy.x * 0.02) * 3;
+
+    noStroke();
+    fill(0, 0, 0, 80);
+    ellipse(enemy.x, enemy.y + 24, 58, 12);
+
+    push();
+    translate(enemy.x, enemy.y + squash);
+    scale(enemy.dir < 0 ? -1 : 1, 1);
+
+    fill("#77d96b");
+    ellipse(0, 8, 54, 38);
+    fill("#9cff8f");
+    ellipse(-8, 0, 32, 24);
+
+    fill("#15311f");
+    ellipse(11, 3, 5, 7);
+    stroke("#15311f");
+    strokeWeight(3);
+    line(15, 15, 24, 11);
+    noStroke();
+
+    fill("#d8ffd4");
+    ellipse(-14, -7, 7, 5);
+    pop();
   }
 }
 
